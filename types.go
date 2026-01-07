@@ -77,3 +77,19 @@ type ActionResult struct {
 	Success bool   `json:"success"`
 	Message string `json:"message"`
 }
+
+// ReplyCommentRequest 回复评论请求
+type ReplyCommentRequest struct {
+	FeedID    string `json:"feed_id" binding:"required"`
+	XsecToken string `json:"xsec_token" binding:"required"`
+	CommentID string `json:"comment_id" binding:"required"`
+	Content   string `json:"content" binding:"required"`
+}
+
+// ReplyCommentResponse 回复评论响应
+type ReplyCommentResponse struct {
+	FeedID    string `json:"feed_id"`
+	CommentID string `json:"comment_id"`
+	Success   bool   `json:"success"`
+	Message   string `json:"message"`
+}

@@ -27,7 +27,11 @@
       "Bash(tar:*)",
       "mcp__playwright__browser_type",
       "mcp__playwright__browser_close",
-      "Bash(git remote:*)"
+      "Bash(git remote:*)",
+      "Bash(xargs:*)",
+      "Bash(wc:*)",
+      "Bash(go version:*)",
+      "Bash(brew list:*)"
     ],
     "deny": []
   }

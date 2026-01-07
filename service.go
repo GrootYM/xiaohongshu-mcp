@@ -393,6 +393,28 @@ func (s *XiaohongshuService) PostCommentToFeed(ctx context.Context, feedID, xsec
 	return &PostCommentResponse{FeedID: feedID, Success: true, Message: "评论发表成功"}, nil
 }
 
+// ReplyToComment 回复评论
+func (s *XiaohongshuService) ReplyToComment(ctx context.Context, feedID, xsecToken, commentID, content string) (*ReplyCommentResponse, error) {
+	b := newBrowser()
+	defer b.Close()
+
+	page := b.NewPage()
+	defer page.Close()
+
+	action := xiaohongshu.NewReplyCommentAction(page)
+
+	if err := action.ReplyToComment(ctx, feedID, xsecToken, commentID, content); err != nil {
+		return nil, err
+	}
+
+	return &ReplyCommentResponse{
+		FeedID:    feedID,
+		CommentID: commentID,
+		Success:   true,
+		Message:   "回复评论成功",
+	}, nil
+}
+
 // LikeFeed 点赞笔记
 func (s *XiaohongshuService) LikeFeed(ctx context.Context, feedID, xsecToken string) (*ActionResult, error) {
 	b := newBrowser()

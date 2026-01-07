@@ -76,6 +76,14 @@ type FavoriteFeedArgs struct {
 	Unfavorite bool   `json:"unfavorite,omitempty" jsonschema:"是否取消收藏，true为取消收藏，false或未设置则为收藏"`
 }
 
+// ReplyCommentArgs 回复评论参数
+type ReplyCommentArgs struct {
+	FeedID    string `json:"feed_id" jsonschema:"小红书笔记ID，从Feed列表获取"`
+	XsecToken string `json:"xsec_token" jsonschema:"访问令牌，从Feed列表的xsecToken字段获取"`
+	CommentID string `json:"comment_id" jsonschema:"目标评论ID，从get_feed_detail返回的评论列表获取"`
+	Content   string `json:"content" jsonschema:"回复内容"`
+}
+
 // InitMCPServer 初始化 MCP Server
 func InitMCPServer(appServer *AppServer) *mcp.Server {
 	// 创建 MCP Server
@@ -257,7 +265,25 @@ func registerTools(server *mcp.Server, appServer *AppServer) {
 		}),
 	)
 
-	// 工具 10: 发布视频（仅本地文件）
+	// 工具 10: 回复评论
+	mcp.AddTool(server,
+		&mcp.Tool{
+			Name:        "reply_to_comment",
+			Description: "回复小红书笔记中的评论",
+		},
+		withPanicRecovery("reply_to_comment", func(ctx context.Context, req *mcp.CallToolRequest, args ReplyCommentArgs) (*mcp.CallToolResult, any, error) {
+			argsMap := map[string]interface{}{
+				"feed_id":    args.FeedID,
+				"xsec_token": args.XsecToken,
+				"comment_id": args.CommentID,
+				"content":    args.Content,
+			}
+			result := appServer.handleReplyComment(ctx, argsMap)
+			return convertToMCPResult(result), nil, nil
+		}),
+	)
+
+	// 工具 11: 发布视频（仅本地文件）
 	mcp.AddTool(server,
 		&mcp.Tool{
 			Name:        "publish_with_video",
