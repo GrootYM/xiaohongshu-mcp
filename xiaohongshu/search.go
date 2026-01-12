@@ -5,11 +5,17 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/url"
+	"sync"
 	"time"
 
 	"github.com/go-rod/rod"
+	"github.com/go-rod/rod/lib/proto"
+	"github.com/sirupsen/logrus"
 	"github.com/xpzouying/xiaohongshu-mcp/errors"
 )
+
+// 全局搜索互斥锁，限制并发搜索数量为1，避免触发反爬
+var searchMutex sync.Mutex
 
 type SearchResult struct {
 	Search struct {
@@ -166,13 +172,33 @@ func NewSearchAction(page *rod.Page) *SearchAction {
 }
 
 func (s *SearchAction) Search(ctx context.Context, keyword string, filters ...FilterOption) ([]Feed, error) {
+	start := time.Now()
+
+	// 获取搜索锁，限制并发为1，避免触发小红书反爬
+	searchMutex.Lock()
+	defer searchMutex.Unlock()
+
+	logrus.Infof("获取搜索锁, 等待耗时: %v", time.Since(start))
+
 	page := s.page.Context(ctx)
 
 	searchURL := makeSearchURL(keyword)
-	page.MustNavigate(searchURL)
-	page.MustWaitStable()
+	logrus.Infof("搜索开始: %s", searchURL)
 
-	page.MustWait(`() => window.__INITIAL_STATE__ !== undefined`)
+	if err := page.Navigate(searchURL); err != nil {
+		return nil, fmt.Errorf("导航到搜索页面失败: %w", err)
+	}
+	logrus.Infof("导航完成, 耗时: %v", time.Since(start))
+
+	if err := page.WaitStable(300 * time.Millisecond); err != nil {
+		return nil, fmt.Errorf("等待页面稳定失败: %w", err)
+	}
+	logrus.Infof("页面稳定, 耗时: %v", time.Since(start))
+
+	if err := page.Wait(rod.Eval(`() => window.__INITIAL_STATE__ !== undefined`)); err != nil {
+		return nil, fmt.Errorf("等待初始状态失败: %w", err)
+	}
+	logrus.Infof("初始状态加载完成, 耗时: %v", time.Since(start))
 
 	// 如果有筛选条件，则应用筛选
 	if len(filters) > 0 {
@@ -194,27 +220,43 @@ func (s *SearchAction) Search(ctx context.Context, keyword string, filters ...Fi
 		}
 
 		// 悬停在筛选按钮上
-		filterButton := page.MustElement(`div.filter`)
-		filterButton.MustHover()
+		filterButton, err := page.Element(`div.filter`)
+		if err != nil {
+			return nil, fmt.Errorf("查找筛选按钮失败: %w", err)
+		}
+		if err := filterButton.Hover(); err != nil {
+			return nil, fmt.Errorf("悬停筛选按钮失败: %w", err)
+		}
 
 		// 等待筛选面板出现
-		page.MustWait(`() => document.querySelector('div.filter-panel') !== null`)
+		if err := page.Wait(rod.Eval(`() => document.querySelector('div.filter-panel') !== null`)); err != nil {
+			return nil, fmt.Errorf("等待筛选面板失败: %w", err)
+		}
 
 		// 应用所有筛选条件
 		for _, filter := range allInternalFilters {
 			selector := fmt.Sprintf(`div.filter-panel div.filters:nth-child(%d) div.tags:nth-child(%d)`,
 				filter.FiltersIndex, filter.TagsIndex)
-			option := page.MustElement(selector)
-			option.MustClick()
+			option, err := page.Element(selector)
+			if err != nil {
+				return nil, fmt.Errorf("查找筛选选项失败: %w", err)
+			}
+			if err := option.Click(proto.InputMouseButtonLeft, 1); err != nil {
+				return nil, fmt.Errorf("点击筛选选项失败: %w", err)
+			}
 		}
 
 		// 等待页面更新
-		page.MustWaitStable()
+		if err := page.WaitStable(300 * time.Millisecond); err != nil {
+			return nil, fmt.Errorf("等待页面更新失败: %w", err)
+		}
 		// 重新等待 __INITIAL_STATE__ 更新
-		page.MustWait(`() => window.__INITIAL_STATE__ !== undefined`)
+		if err := page.Wait(rod.Eval(`() => window.__INITIAL_STATE__ !== undefined`)); err != nil {
+			return nil, fmt.Errorf("等待初始状态更新失败: %w", err)
+		}
 	}
 
-	result := page.MustEval(`() => {
+	resultObj, err := page.Eval(`() => {
 		if (window.__INITIAL_STATE__ &&
 		    window.__INITIAL_STATE__.search &&
 		    window.__INITIAL_STATE__.search.feeds) {
@@ -225,7 +267,11 @@ func (s *SearchAction) Search(ctx context.Context, keyword string, filters ...Fi
 			}
 		}
 		return "";
-	}`).String()
+	}`)
+	if err != nil {
+		return nil, fmt.Errorf("获取搜索结果失败: %w", err)
+	}
+	result := resultObj.Value.String()
 
 	if result == "" {
 		return nil, errors.ErrNoFeeds
@@ -236,6 +282,7 @@ func (s *SearchAction) Search(ctx context.Context, keyword string, filters ...Fi
 		return nil, fmt.Errorf("failed to unmarshal feeds: %w", err)
 	}
 
+	logrus.Infof("搜索完成, 共找到 %d 条结果, 总耗时: %v", len(feeds), time.Since(start))
 	return feeds, nil
 }
 

@@ -5,6 +5,7 @@ import (
 	"os"
 
 	"github.com/sirupsen/logrus"
+	"github.com/xpzouying/xiaohongshu-mcp/browser"
 	"github.com/xpzouying/xiaohongshu-mcp/configs"
 )
 
@@ -25,6 +26,9 @@ func main() {
 
 	configs.InitHeadless(headless)
 	configs.SetBinPath(binPath)
+
+	// 初始化浏览器池（预热浏览器）
+	browser.InitPool(headless, binPath)
 
 	// 初始化服务
 	xiaohongshuService := NewXiaohongshuService()
